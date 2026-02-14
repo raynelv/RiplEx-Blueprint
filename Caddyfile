@@ -1,0 +1,67 @@
+# --------------------
+# Riven Frontend
+# --------------------
+riven.rvf.duckdns.org {
+  encode gzip
+  reverse_proxy riven-frontend:3000
+}
+
+# --------------------
+# Jellyfin
+# --------------------
+jellyfin.rvf.duckdns.org {
+  encode gzip
+  reverse_proxy jellyfin:8096
+}
+
+# --------------------
+# Overseerr
+# --------------------
+overseerr.rvf.duckdns.org {
+  encode gzip
+  reverse_proxy overseerr:5055
+}
+
+# --------------------
+# Radarr
+# --------------------
+radarr.rvf.duckdns.org {
+  encode gzip
+  reverse_proxy radarr:7878
+}
+
+# --------------------
+# Sonarr
+# --------------------
+sonarr.rvf.duckdns.org {
+  encode gzip
+  reverse_proxy sonarr:8989
+}
+
+# --------------------
+# Prowlarr
+# --------------------
+prowlarr.rvf.duckdns.org {
+  encode gzip
+  reverse_proxy prowlarr:9696
+}
+
+# --------------------
+# Portainer
+# --------------------
+portainer.rvf.duckdns.org {
+  encode gzip
+  reverse_proxy portainer:9000
+}
+
+# --------------------
+# Pi-hole
+# --------------------
+pihole.rvf.duckdns.org {
+  encode gzip
+  reverse_proxy pihole:80
+}
+
+rvf.duckdns.org {
+  respond "OK RVF" 200
+}
