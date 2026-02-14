@@ -1,0 +1,307 @@
+services:
+  # --- GRUPO 1: BASES DE DATOS ---
+  riven-db:
+    image: postgres:17-alpine
+    container_name: riven-db
+    command: >
+      postgres -c shared_buffers=1GB -c work_mem=64MB -c
+      maintenance_work_mem=256MB -c checkpoint_timeout=15min -c max_wal_size=2GB
+      -c min_wal_size=1GB
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - riven-pg-data:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - media
+    logging:
+      # Protección SSD
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "1"
+  zilean-db:
+    image: postgres:17-alpine
+    container_name: zilean-db
+    restart: unless-stopped
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=zilean
+    volumes:
+      - zilean-pg-data:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - media
+    logging:
+      # Protección SSD
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "1"
+  # --- GRUPO 2: REPRODUCTORES (ARRANCAN LIBRES) ---
+  plex:
+    image: lscr.io/linuxserver/plex
+    container_name: plex
+    restart: unless-stopped
+    # ELIMINADO EL DEPENDS_ON DE RIVEN (Para DNS Inmediato)
+    ports:
+      - 32400:32400
+    devices:
+      - /dev/dri:/dev/dri
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - ALLOWED_NETWORKS=192.168.1.0/24
+      - ADVERTISE_IP=http://192.168.1.12:32400/
+      - PUID=1000
+      - PGID=1000
+      - VERSION=docker
+    group_add:
+      - "44"
+      - "105"
+    volumes:
+      - /dev/shm:/transcode
+      - /mnt/riven/mount:/media:ro,rslave
+      - /mnt/plex:/config
+      - /mnt/plex/Profiles:/config/Profiles:ro
+      - /mnt/extras:/extras:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://localhost:32400/identity || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - media
+    logging:
+      # Protección SSD: Plex escribe muchos logs, esto es crucial
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "2"
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    # ELIMINADO EL DEPENDS_ON DE RIVEN (Para DNS Inmediato)
+    ports:
+      - 8096:8096
+    devices:
+      - /dev/dri:/dev/dri
+    security_opt:
+      - apparmor:unconfined
+    group_add:
+      - "44"
+      - "105"
+      - "1000"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - JELLYFIN_FFMPEG_OPT_IN_I965=1
+      - LIBVA_DRIVER_NAME=i965
+      - MESA_LOADER_DRIVER_NAME=i965
+      - JELLYFIN_PublishedServerUrl=http://192.168.1.12:8096
+      - JELLYFIN_DISABLE_CHUNKING_FOR_DIRECT_STREAM=true
+    volumes:
+      - /dev/shm:/transcode
+      - /dev/shm:/cache
+      - /dev/shm:/cache/images
+      - /mnt/riven/mount:/media:ro,rslave
+      - /mnt/jellyfin:/config
+    networks:
+      - media
+    logging:
+      # Protección SSD: Evita el efecto de 3 min de lentitud
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "2"
+  emby:
+    image: emby/embyserver
+    container_name: emby
+    profiles:
+      - emby
+    restart: unless-stopped
+    ports:
+      - 8097:8096
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "44"
+      - "105"
+    volumes:
+      - /mnt/riven/mount:/media:ro,rslave
+      - /mnt/emby:/config
+    networks:
+      - media
+    logging:
+      # Protección SSD
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "1"
+  # --- GRUPO 3: EL CEREBRO RIVEN ---
+  riven:
+    image: spoked/riven:sha-9bfdb89
+    container_name: riven
+    restart: unless-stopped
+    shm_size: 10gb # Tu petición: 8GB Caché + 2GB Margen RAM
+    logging:
+      # Tu petición: 1GB Logs (500mb x 2) en SSD
+      driver: json-file
+      options:
+        max-size: 500m
+        max-file: "2"
+    healthcheck:
+      test:
+        - CMD
+        - ls
+        - /mount/movies
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 2m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 8080:8080
+    tty: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse
+    env_file:
+      - .env
+    environment:
+      RIVEN_LOG_LEVEL: INFO
+      RIVEN_LIBRARY_CLEANUP: "false"
+      RIVEN_VFS_KEEPALIVE: "true"
+      TZ: ${TZ}
+      PUID: 1000
+      PGID: 1000
+      RIVEN_FILESYSTEM_EXTRA_FLAGS: --allow-other --dir-mode 0777 --file-mode 0777
+      RIVEN_FILESYSTEM_MOUNT_PATH: /mount
+      RIVEN_FILESYSTEM_CACHE_DIR: /dev/shm/riven/cache
+      RIVEN_FILESYSTEM_CACHE_MAX_SIZE_MB: 8000 # Límite real de video
+      RIVEN_FILESYSTEM_CACHE_EVICTION: LRU
+      RIVEN_FILESYSTEM_CHUNK_SIZE_MB: 64
+      RIVEN_FILESYSTEM_FETCH_AHEAD_CHUNKS: 8
+      RIVEN_FILESYSTEM_CACHE_METRICS: "true"
+      RIVEN_FILESYSTEM_CHUNK_THRESHOLD: 10s
+      RIVEN_FILESYSTEM_MAX_PARALLEL_FETCHES: 10
+      RIVEN_DATABASE_POOL_SIZE: 50
+      RIVEN_DATABASE_MAX_OVERFLOW: 20
+      RIVEN_FORCE_ENV: "true"
+      RIVEN_UPDATERS_PLEX_URL: http://plex:32400
+      RIVEN_API_KEY: ${BACKEND_API_KEY}
+      RIVEN_DATABASE_HOST: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@riven-db:5432/${POSTGRES_DB}
+    volumes:
+      - /dev/shm:/riven/cache
+      - /mnt/riven/backend:/riven/data
+      - /mnt/riven/mount:/mount:rshared
+      - /mnt/plex:/library:ro
+    depends_on:
+      riven-db:
+        condition: service_healthy # Espera real a la base de datos
+    networks:
+      - media
+    extra_hosts:
+      - "real-debrid.com:188.165.253.153"
+      - "www.real-debrid.com:188.165.253.153"
+      - "api.real-debrid.com:188.165.253.153"   
+  # --- GRUPO 4: LOS SATÉLITES ---
+  zilean:
+    image: ipromknight/zilean:latest
+    container_name: zilean
+    restart: unless-stopped
+    ports:
+      - 7000:7000
+    environment:
+      - ASPNETCORE_URLS=http://+:7000
+      - Zilean__Dmm__ImportBatched=true
+      - Zilean__Database__ConnectionString=Host=zilean-db;Port=5432;Database=zilean;Username=postgres;Password=postgres
+      # --- CONFIGURACIÓN ANTI-COLAPSO ---
+      - ZILEAN_DMM_SYNC_SCHEDULE=0 4 * * *
+      - LOG_LEVEL=Error # <--- Solo errores, limpia los logs
+      - GOMEMLIMIT=512MiB # Limita la RAM de .NET
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50" # <--- Limita a medio núcleo de CPU
+          memory: 1024M # Limita a 1GB de RAM total      
+    depends_on:
+      zilean-db:
+        condition: service_healthy
+    networks:
+      - media
+    logging:
+      # Protección SSD
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "2"
+  riven-frontend:
+    image: spoked/riven-frontend:dev
+    container_name: riven-frontend
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+    env_file:
+      - .env
+    extra_hosts:
+      - host.docker.internal=host-gateway
+    environment:
+      NODE_OPTIONS: --max-old-space-size=1024
+      NODE_ENV: production
+      TZ: ${TZ}
+      BACKEND_URL: http://riven:8080
+      BACKEND_API_KEY: ${BACKEND_API_KEY}
+      AUTH_SECRET: ${AUTH_SECRET}
+      ORIGIN: ${ORIGIN}
+    volumes:
+      - riven-frontend-data:/riven/data
+    depends_on:
+      riven:
+        condition: service_started
+    networks:
+      - media
+    logging:
+      # Protección SSD
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "1"
+volumes:
+  riven-frontend-data: null
+  riven-pg-data: null
+  zilean-pg-data: null
+networks:
+  media:
+    name: media
+    external: true

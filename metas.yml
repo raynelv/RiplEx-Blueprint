@@ -1,0 +1,53 @@
+services:
+  shokoserver:
+    image: shokoanime/server:latest
+    container_name: shokoserver
+    restart: unless-stopped
+    ports:
+      - 8111:8111
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - /mnt/riven/mount:/media
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    networks:
+      - media
+  
+  meilisearch:
+    container_name: meilisearch
+    restart: unless-stopped   
+    image: getmeili/meilisearch:latest
+    environment:
+      - MEILI_MASTER_KEY=riplex_secret_2026
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_ENV=production
+    volumes:
+      - ./meilisearch_data:/meili_data
+    networks:
+      - media
+       
+  kometa:
+    image: kometateam/kometa:latest
+    container_name: kometa
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - KOMETA_CONFIG=/config/config.yml
+      - KOMETA_RUN=true
+    volumes:
+      - /mnt/kometa:/config
+      - /mnt/extras:/extras
+    networks:
+      - media
+    restart: no
+networks:
+  media:
+    external: true

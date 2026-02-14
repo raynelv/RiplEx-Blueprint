@@ -1,0 +1,88 @@
+services:
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - 8082:80
+      - 443:443
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - infra_net
+      - media
+      - riven_net
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 67:67/udp
+      - 8081:80
+    environment:
+      TZ: America/New_York
+      WEBPASSWORD: admin
+      ServerIP: 192.168.1.12
+      DNSMASQ_LISTENING: all
+    volumes:
+      - pihole_data:/etc/pihole
+      - dnsmasq_data:/etc/dnsmasq.d
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - infra_net
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - 9000:9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - infra_net
+  dockge:
+    image: louislam/dockge:latest
+    container_name: dockge
+    restart: unless-stopped
+    ports:
+      - 5001:5001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dockge_data:/app/data
+      - /home/raynelv:/home/raynelv
+    environment:
+      - DOCKGE_STACKS_DIR=/home/raynelv
+    networks:
+      - infra_net
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - 3001:3000
+    volumes:
+      - /home/raynelv/infra/homepage/config:/app/config
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=192.168.1.12:3001,192.168.1.12,localhost,rvf.duckdns.org
+    networks:
+      - infra_net
+networks:
+  infra_net:
+    name: infra_net
+  media:
+    external: true
+  riven_net:
+    external: true
+    name: riven_net
+volumes:
+  caddy_data: null
+  caddy_config: null
+  pihole_data: null
+  dnsmasq_data: null
+  portainer_data: null

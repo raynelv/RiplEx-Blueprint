@@ -1,0 +1,35 @@
+services:
+  market-monitor:
+    image: dgtlmoon/changedetection.io
+    container_name: market-monitor
+    hostname: market-monitor
+    restart: unless-stopped
+    ports:
+      - 5000:5000
+    volumes:
+      - /mnt/market/config:/datastore
+    environment:
+      - PLAYWRIGHT_DRIVER_URL=ws://browser-chrome:3000
+      - NOTIFICATION_URL='tlgrm://8523368343:AAE5fJrZcDMoS7dN79kl7iJ3xTEQrl8Ff7w/548499091'
+      - BASE_URL=http://localhost:5000
+    networks:
+      - media
+    depends_on:
+      - browser-chrome
+
+  browser-chrome:
+    image: browserless/chrome
+    container_name: browser-chrome
+    hostname: browser-chrome
+    restart: unless-stopped
+    environment:
+      - MAX_CONCURRENT_SESSIONS=10
+      - EXIT_ON_HEALTH_FAILURE=true
+      - PRE_BOOT_HTTP=true
+      - CONNECTION_TIMEOUT=300000
+    networks:
+      - media
+
+networks:
+  media:
+    external: true
